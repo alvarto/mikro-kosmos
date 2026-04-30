@@ -10,6 +10,7 @@ const panValue = document.querySelector("#panValue");
 const depthValue = document.querySelector("#depthValue");
 const startButton = document.querySelector("#startButton");
 const muteButton = document.querySelector("#muteButton");
+const testSoundButton = document.querySelector("#testSoundButton");
 
 const sampleWidth = analysisCanvas.width;
 const sampleHeight = analysisCanvas.height;
@@ -22,6 +23,7 @@ let panner;
 let oscillator;
 let lfo;
 let lfoGain;
+let audioIsReady = false;
 let previousFrame;
 let animationId;
 let isRunning = false;
@@ -41,6 +43,8 @@ const toPercent = (value) => `${Math.round(clamp(value, 0, 1) * 100)}%`;
 const setStatus = (message) => {
   statusText.textContent = message;
 };
+
+const getAudioContextConstructor = () => window.AudioContext || window.webkitAudioContext;
 
 const describePan = (x) => {
   if (x < -0.28) {
@@ -68,18 +72,29 @@ const describeDepth = (y) => {
 
 const ensureAudio = async () => {
   if (!audioContext) {
-    audioContext = new AudioContext();
+    const AudioContextConstructor = getAudioContextConstructor();
+
+    if (!AudioContextConstructor) {
+      throw new Error("Web Audio is not supported in this browser.");
+    }
+
+    audioContext = new AudioContextConstructor();
     masterGain = audioContext.createGain();
-    panner = new StereoPannerNode(audioContext, { pan: 0 });
-    oscillator = new OscillatorNode(audioContext, { frequency: 180, type: "sine" });
-    lfo = new OscillatorNode(audioContext, { frequency: 2.5, type: "sine" });
+    panner = createPanNode(audioContext);
+    oscillator = audioContext.createOscillator();
+    lfo = audioContext.createOscillator();
     lfoGain = audioContext.createGain();
 
+    oscillator.type = "sawtooth";
+    oscillator.frequency.value = 240;
+    lfo.type = "sine";
+    lfo.frequency.value = 2.5;
     masterGain.gain.value = 0;
     lfoGain.gain.value = 24;
 
     lfo.connect(lfoGain).connect(oscillator.frequency);
-    oscillator.connect(panner).connect(masterGain).connect(audioContext.destination);
+    connectPanToMaster(panner, masterGain);
+    oscillator.connect(panner.input || panner);
     oscillator.start();
     lfo.start();
   }
@@ -87,6 +102,49 @@ const ensureAudio = async () => {
   if (audioContext.state === "suspended") {
     await audioContext.resume();
   }
+
+  audioIsReady = audioContext.state === "running";
+};
+
+const createPanNode = (context) => {
+  if (typeof context.createStereoPanner === "function") {
+    return context.createStereoPanner();
+  }
+
+  const splitter = context.createChannelSplitter(2);
+  const merger = context.createChannelMerger(2);
+  const leftGain = context.createGain();
+  const rightGain = context.createGain();
+
+  leftGain.gain.value = 1;
+  rightGain.gain.value = 1;
+  splitter.connect(leftGain, 0);
+  splitter.connect(rightGain, 0);
+  leftGain.connect(merger, 0, 0);
+  rightGain.connect(merger, 0, 1);
+
+  return {
+    input: splitter,
+    output: merger,
+    leftGain,
+    rightGain,
+    setPan(value, time) {
+      const pan = clamp(value, -1, 1);
+      const left = pan <= 0 ? 1 : 1 - pan;
+      const right = pan >= 0 ? 1 : 1 + pan;
+      leftGain.gain.setTargetAtTime(left, time, 0.08);
+      rightGain.gain.setTargetAtTime(right, time, 0.08);
+    },
+  };
+};
+
+const connectPanToMaster = (panNode, target) => {
+  if (panNode.output) {
+    panNode.output.connect(target).connect(audioContext.destination);
+    return;
+  }
+
+  panNode.connect(target).connect(audioContext.destination);
 };
 
 const setMuted = (muted) => {
@@ -102,11 +160,11 @@ const setMuted = (muted) => {
 const calculateGain = ({ motion, brightness }) => {
   const motionEnergy = clamp(motion / 70, 0, 1);
   const brightnessEnergy = clamp(brightness / 255, 0, 1);
-  return clamp(0.018 + motionEnergy * 0.13 + brightnessEnergy * 0.05, 0, 0.2);
+  return clamp(0.06 + motionEnergy * 0.18 + brightnessEnergy * 0.08, 0, 0.32);
 };
 
 const updateAudio = ({ x, y, motion, brightness }) => {
-  if (!audioContext || isMuted) {
+  if (!audioContext || !audioIsReady || isMuted) {
     return;
   }
 
@@ -117,11 +175,44 @@ const updateAudio = ({ x, y, motion, brightness }) => {
   const frequency = 140 + brightnessEnergy * 560 + motionEnergy * 180;
   const tremoloRate = 1.6 + motionEnergy * 9;
 
-  panner.pan.setTargetAtTime(clamp(x, -1, 1), now, 0.08);
+  if (panner.pan) {
+    panner.pan.setTargetAtTime(clamp(x, -1, 1), now, 0.08);
+  } else {
+    panner.setPan(clamp(x, -1, 1), now);
+  }
+
   oscillator.frequency.setTargetAtTime(frequency, now, 0.08);
   lfo.frequency.setTargetAtTime(tremoloRate, now, 0.1);
   lfoGain.gain.setTargetAtTime(10 + distanceEnergy * 42, now, 0.12);
   masterGain.gain.setTargetAtTime(calculateGain({ motion, brightness }), now, 0.08);
+};
+
+const playTestTone = async () => {
+  try {
+    await ensureAudio();
+
+    if (!audioIsReady) {
+      setStatus("浏览器还没有放行音频，请再点一次测试声音或启动按钮。");
+      return;
+    }
+
+    const now = audioContext.currentTime;
+    const testOscillator = audioContext.createOscillator();
+    const testGain = audioContext.createGain();
+
+    testOscillator.type = "square";
+    testOscillator.frequency.setValueAtTime(660, now);
+    testGain.gain.setValueAtTime(0.0001, now);
+    testGain.gain.exponentialRampToValueAtTime(0.22, now + 0.03);
+    testGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
+    testOscillator.connect(testGain).connect(audioContext.destination);
+    testOscillator.start(now);
+    testOscillator.stop(now + 0.36);
+    setStatus("如果听到短促提示音，音频已解锁；没有声音请检查静音开关和系统音量。");
+  } catch (error) {
+    console.error(error);
+    setStatus("当前浏览器无法启动 Web Audio，请换 Safari/Chrome 或检查系统音频权限。");
+  }
 };
 
 const updateInterface = ({ x, y, motion, brightness }) => {
@@ -236,6 +327,7 @@ const start = async () => {
     startButton.disabled = true;
     setStatus("正在请求手机摄像头与音频权限...");
     await ensureAudio();
+    playTestTone();
 
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
@@ -255,7 +347,7 @@ const start = async () => {
     startButton.textContent = "停止反馈";
     muteButton.disabled = false;
     previousFrame = undefined;
-    setStatus("运行中：画面亮度、运动和位置正在驱动声场。");
+    setStatus("运行中：声音已开启，画面亮度、运动和位置正在驱动声场。");
     analyzeFrame();
   } catch (error) {
     console.error(error);
@@ -284,3 +376,5 @@ startButton.addEventListener("click", () => {
 muteButton.addEventListener("click", () => {
   setMuted(!isMuted);
 });
+
+testSoundButton.addEventListener("click", playTestTone);
