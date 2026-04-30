@@ -18,6 +18,16 @@ npm start
 
 然后访问 `http://localhost:4173`。手机摄像头权限通常要求 HTTPS 或 localhost；如果用真机访问开发电脑，请使用支持 HTTPS 的本地代理/隧道。
 
+## GitHub Pages 预览
+
+项目已经配置为 GitHub Pages 兼容的纯静态站点。合并到 `main` 后，GitHub Actions 会把仓库根目录发布到 Pages。
+
+1. 在 GitHub 仓库的 **Settings → Pages** 中，将 Source 设为 **GitHub Actions**。
+2. 合并或手动运行 `Deploy static app to GitHub Pages` workflow。
+3. 打开仓库对应的 Pages 地址，例如 `https://<user>.github.io/mikro-kosmos/`。
+
+GitHub Pages 使用 HTTPS，手机浏览器可以直接申请摄像头权限；首次启动仍需用户点击按钮授权音频播放。
+
 ## 检查
 
 ```bash
