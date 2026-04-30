@@ -1,0 +1,18 @@
+{
+  "name": "Mikro Kosmos",
+  "short_name": "MikroKosmos",
+  "description": "Camera-driven mobile sound field feedback.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#070912",
+  "theme_color": "#48d6ff",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

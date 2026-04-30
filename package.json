@@ -1,0 +1,11 @@
+{
+  "name": "mikro-kosmos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mobile camera-driven sound field feedback web app.",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 4173",
+    "check": "node --check app.js"
+  }
+}
