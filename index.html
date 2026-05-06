@@ -4,48 +4,52 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#090b16" />
-    <meta
-      name="description"
-      content="一个通过手机摄像头输入生成声场反馈的实验性 WebApp。"
-    />
+    <meta name="description" content="一个通过端侧姿态估计生成沉浸式声场反馈的实验性 WebApp。" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="stylesheet" href="./styles.css" />
-    <title>Mikro Kosmos | 声场反馈</title>
+    <title>Mikro Kosmos | Dance Field</title>
   </head>
   <body>
-    <main class="app-shell">
-      <section class="hero" aria-labelledby="app-title">
-        <p class="eyebrow">camera to spatial audio</p>
-        <h1 id="app-title">用摄像头感知空间，用声音反馈现场</h1>
-        <p class="intro">
-          将手机摄像头对准环境，应用会分析画面中的亮度、运动与重心，并转换为实时的左右声像、
-          音高、脉冲和空气感反馈。
-        </p>
-      </section>
+    <main class="immersive-app" aria-label="Mikro Kosmos 沉浸式舞蹈声场">
+      <section class="immersive-stage" aria-label="摄像头输入、姿态解码和声场状态">
+        <video id="camera" playsinline muted aria-label="实时摄像头预览"></video>
+        <canvas id="poseCanvas" aria-hidden="true"></canvas>
+        <canvas id="analysisCanvas" width="96" height="72" aria-hidden="true"></canvas>
+        <div class="scan-grid" aria-hidden="true"></div>
 
-      <section class="stage" aria-label="摄像头输入和声场状态">
-        <div class="camera-card">
-          <video id="camera" playsinline muted aria-label="实时摄像头预览"></video>
-          <canvas id="analysisCanvas" width="96" height="72" aria-hidden="true"></canvas>
-          <div class="scan-grid" aria-hidden="true"></div>
-          <p id="cameraStatus" class="status-pill">等待授权摄像头与音频</p>
-        </div>
-
-        <div class="field-card">
-          <div class="field-map" aria-hidden="true">
-            <div id="soundDot" class="sound-dot"></div>
-            <div class="field-ring ring-one"></div>
-            <div class="field-ring ring-two"></div>
-          </div>
-          <dl class="meters" aria-label="声场分析指标">
+        <aside class="telemetry telemetry-pose" aria-label="舞蹈姿态参数">
+          <p class="telemetry-title">dance decode</p>
+          <dl>
+            <div>
+              <dt>模型</dt>
+              <dd id="modelValue">待机</dd>
+            </div>
+            <div>
+              <dt>姿态</dt>
+              <dd id="poseValue">0%</dd>
+            </div>
+            <div>
+              <dt>能量</dt>
+              <dd><span id="motionValue">0</span>%</dd>
+            </div>
+            <div>
+              <dt>展开</dt>
+              <dd><span id="spreadValue">0</span>%</dd>
+            </div>
+            <div>
+              <dt>节奏</dt>
+              <dd><span id="rhythmValue">0</span>%</dd>
+            </div>
             <div>
               <dt>亮度</dt>
               <dd><span id="brightnessValue">0</span>%</dd>
             </div>
-            <div>
-              <dt>运动</dt>
-              <dd><span id="motionValue">0</span>%</dd>
-            </div>
+          </dl>
+        </aside>
+
+        <aside class="telemetry telemetry-audio" aria-label="音频生成参数">
+          <p class="telemetry-title">audio synth</p>
+          <dl>
             <div>
               <dt>声像</dt>
               <dd id="panValue">中间</dd>
@@ -54,35 +58,32 @@
               <dt>深度</dt>
               <dd id="depthValue">中景</dd>
             </div>
+            <div>
+              <dt>音高</dt>
+              <dd><span id="frequencyValue">0</span>Hz</dd>
+            </div>
+            <div>
+              <dt>脉冲</dt>
+              <dd><span id="pulseValue">0</span>Hz</dd>
+            </div>
+            <div>
+              <dt>增益</dt>
+              <dd><span id="gainValue">0</span>%</dd>
+            </div>
           </dl>
-        </div>
-      </section>
+        </aside>
 
-      <section class="controls" aria-label="控制">
-        <button id="startButton" type="button">启动声场反馈</button>
-        <button id="muteButton" class="secondary" type="button" disabled>暂停声音</button>
-      </section>
+        <p id="cameraStatus" class="status-pill">等待授权摄像头、音频和端侧姿态模型</p>
 
-      <section class="guide" aria-label="使用说明">
-        <article>
-          <h2>如何体验</h2>
-          <ol>
-            <li>使用手机浏览器打开，并允许摄像头与音频权限。</li>
-            <li>缓慢移动手机，观察画面重心如何改变声像位置。</li>
-            <li>靠近强光、暗处或运动物体，感受音高与节奏反馈变化。</li>
-          </ol>
-        </article>
-        <article>
-          <h2>反馈规则</h2>
-          <ul>
-            <li>画面亮度越高，基础音高越高。</li>
-            <li>运动越明显，脉冲声越密集。</li>
-            <li>亮区靠左或靠右，会改变双耳声像。</li>
-          </ul>
-        </article>
+        <section class="controls" aria-label="控制">
+          <button id="startButton" type="button">进入声场</button>
+          <button id="muteButton" class="secondary" type="button" disabled>静音</button>
+        </section>
       </section>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@latest/dist/pose-detection.min.js"></script>
     <script src="./app.js" type="module"></script>
   </body>
 </html>
