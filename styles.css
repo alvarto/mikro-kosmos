@@ -160,6 +160,12 @@ button {
   backdrop-filter: blur(16px);
 }
 
+.status-pill.is-quiet {
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  pointer-events: none;
+}
+
 .controls {
   left: 50%;
   bottom: max(12px, env(safe-area-inset-bottom));

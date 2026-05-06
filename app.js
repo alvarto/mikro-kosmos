@@ -102,6 +102,10 @@ const describeDepth = (y) => {
   return "中景";
 };
 
+const setRunningChrome = (running) => {
+  document.body.classList.toggle("is-running", running);
+};
+
 const ensureAudio = async () => {
   if (!audioContext) {
     audioContext = new AudioContext();
@@ -376,8 +380,8 @@ const decodePose = (pose, fallbackMetrics) => {
   previousBeatEnergy = beatEnergy;
 
   return {
-    x: center.x / video.videoWidth ? center.x / video.videoWidth * 2 - 1 : fallbackMetrics.x,
-    y: center.y / video.videoHeight ? center.y / video.videoHeight * 2 - 1 : fallbackMetrics.y,
+    x: video.videoWidth ? center.x / video.videoWidth * 2 - 1 : fallbackMetrics.x,
+    y: video.videoHeight ? center.y / video.videoHeight * 2 - 1 : fallbackMetrics.y,
     motion: clamp(fallbackMetrics.motion * 0.35 + poseMotion * 0.65, 0, 1),
     brightness: fallbackMetrics.brightness,
     poseScore,
@@ -387,13 +391,27 @@ const decodePose = (pose, fallbackMetrics) => {
 };
 
 const sizePoseCanvas = () => {
-  const width = video.videoWidth || poseCanvas.clientWidth || window.innerWidth;
-  const height = video.videoHeight || poseCanvas.clientHeight || window.innerHeight;
+  const pixelRatio = window.devicePixelRatio || 1;
+  const width = Math.round((poseCanvas.clientWidth || window.innerWidth) * pixelRatio);
+  const height = Math.round((poseCanvas.clientHeight || window.innerHeight) * pixelRatio);
 
   if (poseCanvas.width !== width || poseCanvas.height !== height) {
     poseCanvas.width = width;
     poseCanvas.height = height;
   }
+};
+
+const mapVideoPointToCanvas = (keypoint) => {
+  const videoWidth = video.videoWidth || poseCanvas.width;
+  const videoHeight = video.videoHeight || poseCanvas.height;
+  const scale = Math.max(poseCanvas.width / videoWidth, poseCanvas.height / videoHeight);
+  const offsetX = (poseCanvas.width - videoWidth * scale) / 2;
+  const offsetY = (poseCanvas.height - videoHeight * scale) / 2;
+
+  return {
+    x: keypoint.x * scale + offsetX,
+    y: keypoint.y * scale + offsetY,
+  };
 };
 
 const drawPose = (pose) => {
@@ -421,15 +439,20 @@ const drawPose = (pose) => {
     poseContext.strokeStyle = "rgba(85, 241, 200, 0.78)";
     poseContext.lineWidth = 4;
     poseContext.beginPath();
-    poseContext.moveTo(from.x, from.y);
-    poseContext.lineTo(to.x, to.y);
+    const fromPoint = mapVideoPointToCanvas(from);
+    const toPoint = mapVideoPointToCanvas(to);
+
+    poseContext.moveTo(fromPoint.x, fromPoint.y);
+    poseContext.lineTo(toPoint.x, toPoint.y);
     poseContext.stroke();
   });
 
   getConfidentKeypoints(pose).forEach((keypoint) => {
+    const point = mapVideoPointToCanvas(keypoint);
+
     poseContext.fillStyle = "rgba(237, 247, 251, 0.92)";
     poseContext.beginPath();
-    poseContext.arc(keypoint.x, keypoint.y, 5, 0, Math.PI * 2);
+    poseContext.arc(point.x, point.y, 5 * (window.devicePixelRatio || 1), 0, Math.PI * 2);
     poseContext.fill();
   });
 
@@ -526,6 +549,7 @@ const stop = () => {
   startButton.disabled = false;
   muteButton.disabled = true;
   startButton.textContent = "进入声场";
+  setRunningChrome(false);
 
   if (masterGain && audioContext) {
     masterGain.gain.setTargetAtTime(0, audioContext.currentTime, 0.05);
@@ -577,6 +601,7 @@ const start = async () => {
 
     isRunning = true;
     setMuted(false);
+    setRunningChrome(true);
     startButton.disabled = false;
     startButton.textContent = "退出";
     muteButton.disabled = false;
@@ -587,6 +612,7 @@ const start = async () => {
     muteButton.disabled = true;
     startButton.textContent = "进入声场";
     setModelStatus("待机");
+    setRunningChrome(false);
     setStatus("无法启动。请确认使用 HTTPS/localhost，并允许摄像头权限。");
   }
 };
